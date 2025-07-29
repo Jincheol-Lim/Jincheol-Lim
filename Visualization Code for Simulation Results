@@ -1,0 +1,46 @@
+# -------------------------------------------------------------------
+# Title: Visualization of ARI Results (Continuous Covariate)
+# Description: Plotting average adjusted Rand index by imputation method
+# Author: Jincheol Lim
+# -------------------------------------------------------------------
+
+library(readxl)
+library(dplyr)
+library(ggplot2)
+
+# 1. Load data
+df <- read_excel("simulation_ARI_continuous.xlsx")
+
+# 2. Summarize + label formatting
+df_summary <- df %>%
+  group_by(N, missing_mech, cutpoint_loc, missing_rate, method) %>%
+  summarise(mean_ARI = mean(ARI, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    SSMM = paste0("SS=", N, ", MM=", missing_mech),
+    CL = paste0("CL=", cutpoint_loc)
+  )
+
+# 3. Plot
+ggplot(df_summary, aes(x = missing_rate, y = mean_ARI, color = method, group = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.7) +
+  geom_point(size = 1.5, alpha = 0.7) +
+  facet_grid(CL ~ SSMM) +
+  scale_y_continuous(
+    name = "Average adjusted rand index",
+    limits = c(0, 1),
+    breaks = seq(0, 1, 0.2)
+  ) +
+  scale_x_continuous(
+    name = "Missingness proportion",
+    breaks = c(0.1, 0.2, 0.3)
+  ) +
+  labs(
+    color = "Missing data handling method"
+  ) +
+  theme_bw() +
+  theme(
+    strip.text = element_text(size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom",
+    plot.title = element_blank()
+  )
