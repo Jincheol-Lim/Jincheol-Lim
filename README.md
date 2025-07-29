@@ -4,6 +4,7 @@ This repository contains R code for a Monte Carlo simulation study evaluating th
 
 Included R Scripts
 1. simulation_continuous.R
+
 Purpose:
 Conducts a Monte Carlo simulation using a continuous covariate to partition SEM trees.
 
@@ -14,6 +15,7 @@ Output:
 Saves the full simulation results as simulation_ARI_continuous.xlsx.
 
 2. simulation_dichotomous.R
+
 Purpose:
 Same as above, but uses a dichotomous (binary) covariate to partition the SEM trees.
 
@@ -24,6 +26,7 @@ Output:
 Saves the full simulation results as simulation_ARI_dichotomous.xlsx.
 
 3. plot_simulation_results.R
+
 Purpose:
 Generates summary plots of the simulation results for comparison across missing data handling methods.
 
