@@ -3,7 +3,7 @@
 This repository contains R code for a Monte Carlo simulation study evaluating the performance of various missing data handling methods in Structural Equation Modeling Trees (SEM Trees). The simulation compares subgroup recovery under different samplesize, cut point location, missingness mechanisms and proportion, using either continuous or dichotomous covariates.
 
 Included R Scripts
-1. simulation_continuous.R
+1. simulation_continuous
 
 Purpose:
 Conducts a Monte Carlo simulation using a continuous covariate to partition SEM trees.
@@ -14,7 +14,7 @@ Simulates longitudinal data based on a Latent Growth Curve Model (LGCM), imposes
 Output:
 Saves the full simulation results as simulation_ARI_continuous.xlsx.
 
-2. simulation_dichotomous.R
+2. simulation_dichotomous
 
 Purpose:
 Same as above, but uses a dichotomous (binary) covariate to partition the SEM trees.
@@ -25,7 +25,7 @@ Group labels are assigned based on a binary splitting covariate. The simulation 
 Output:
 Saves the full simulation results as simulation_ARI_dichotomous.xlsx.
 
-3. plot_simulation_results.R
+3. Visualization of ARI Results
 
 Purpose:
 Generates summary plots of the simulation results for comparison across missing data handling methods.
