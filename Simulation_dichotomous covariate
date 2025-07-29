@@ -1,0 +1,173 @@
+# -------------------------------------------------------------------
+# Title: Simulation Code for SEM Tree with Dichotomous Covariate
+# Description: Monte Carlo simulation evaluating the effect of missing data 
+#              handling methods (Ignore, missForest, kNN, FAMD, CART) 
+#              on subgroup recovery performance using a dichotomous covariate 
+#              in SEM Tree analysis.
+# Author: Jincheol Lim
+# Last updated: 2025-07-28
+# -------------------------------------------------------------------
+
+# Required packages
+library(mvtnorm)
+library(MASS)
+library(semtree)
+library(lavaan)
+library(missForest)
+library(missMDA)
+library(missMethods)
+library(VIM)
+library(pdfCluster)
+library(writexl)
+library(dplyr)
+
+SIMULATION <- function(Repeat = 100, seed = 1234) {
+
+  set.seed(seed)
+
+  # Latent Growth Curve Model (LGCM) specification
+  growthCurveModel <- '
+    inter =~ 1*y1 + 1*y2 + 1*y3 + 1*y4
+    slope =~ 0*y1 + 1*y2 + 2*y3 + 3*y4
+    inter ~~ vari*inter; inter ~ meani*1
+    slope ~~ vars*slope; slope ~ means*1
+    inter ~~ cov*slope
+    y1 ~~ residual1*y1; y1 ~ 0*1
+    y2 ~~ residual2*y2; y2 ~ 0*1
+    y3 ~~ residual3*y3; y3 ~ 0*1
+    y4 ~~ residual4*y4; y4 ~ 0*1
+  '
+
+  RESULT_ALL <- data.frame()
+
+  for (N in c(500, 1000)) {
+    for (cut_loc in c("1/2", "1/3", "1/6")) {
+      for (missing_mech in c("MCAR", "MAR")) {
+        for (missing_rate in c(0.05, 0.10, 0.20, 0.30)) {
+          for (tt in 1:Repeat) {
+
+            cut_loc_num <- as.numeric(factor(cut_loc, levels = c("1/2","1/3","1/6")))
+            mech_num <- as.numeric(factor(missing_mech, levels = c("MCAR","MAR")))
+
+            set.seed(seed + N*1000 + cut_loc_num*100 +
+                     mech_num*10 + round(missing_rate*100) + tt)
+
+            cutpoint <- switch(cut_loc,
+              "1/2" = round(N / 2),
+              "1/3" = sample(c(round(N * 1/3), round(N * 2/3)), 1),
+              "1/6" = sample(c(round(N * 1/6), round(N * 5/6)), 1)
+            )
+
+            make_group <- function(n, mu_inter, mu_slope) {
+              factors <- mvrnorm(n, c(mu_inter, mu_slope),
+                                 matrix(c(33.913, 10.238, 10.238, 10.749), 2, 2))
+              Y <- matrix(0, n, 4)
+              Y[,1] <- factors[,1] + rnorm(n, 0, sqrt(2.942))
+              Y[,2] <- factors[,1] + 1*factors[,2] + rnorm(n, 0, sqrt(15.084))
+              Y[,3] <- factors[,1] + 2*factors[,2] + rnorm(n, 0, sqrt(44.858))
+              Y[,4] <- factors[,1] + 3*factors[,2] + rnorm(n, 0, sqrt(85.200))
+              return(Y)
+            }
+
+            Group1 <- make_group(cutpoint, 39.563 - 0.5 * 1.5 * 6.071, 6.988)
+            Group2 <- make_group(N - cutpoint, 39.563 + 0.5 * 1.5 * 6.071, 6.988)
+            Y <- rbind(Group1, Group2)
+
+            cov1 <- c(rep(0, cutpoint), rep(1, N - cutpoint))  # dichotomous covariate
+            Data_complete <- data.frame(Y, cov1 = factor(cov1))
+            colnames(Data_complete) <- c("y1", "y2", "y3", "y4", "cov1")
+            true_groups <- c(rep(2, cutpoint), rep(3, N - cutpoint))
+
+            amp <- mice::ampute(
+              data = Data_complete,
+              prop = missing_rate,
+              mech = missing_mech,
+              patterns = diag(5),
+              freq = rep(1/5, 5),
+              type = "RIGHT"
+            )
+            Data_missing <- amp$amp
+            Data_missing$cov1 <- factor(Data_missing$cov1)
+
+            for (method in c("Ignore", "missForest", "kNN", "FAMD", "CART")) {
+
+              method_num <- as.numeric(factor(method, levels = c("Ignore","missForest","kNN","FAMD","CART")))
+
+              set.seed(seed + N*1000 + cut_loc_num*100 +
+                       mech_num*10 + round(missing_rate*100) + tt + method_num*10000)
+
+              imp <- switch(method,
+                "Ignore" = Data_missing,
+                "missForest" = {
+                  tmp <- missForest(Data_missing)$ximp
+                  tmp$cov1 <- factor(tmp$cov1)
+                  tmp
+                },
+                "kNN" = {
+                  tmp <- VIM::kNN(Data_missing,
+                                  variable = c("cov1", "y1", "y2", "y3", "y4"),
+                                  dist_var = c("cov1", "y1", "y2", "y3", "y4"),
+                                  k = 5, imp_var = FALSE)
+                  tmp$cov1 <- factor(tmp$cov1)
+                  tmp
+                },
+                "FAMD" = {
+                  tmp <- missMDA::imputeFAMD(Data_missing, ncp = 2, method = "Regularized", seed = 123)$completeObs
+                  tmp$cov1 <- factor(tmp$cov1)
+                  tmp
+                },
+                "CART" = {
+                  tmp <- Data_missing
+                  vars <- names(tmp)
+                  missing_vars <- vars[sapply(tmp, function(x) any(is.na(x)))]
+                  for (v in missing_vars) {
+                    predictors <- setdiff(vars, v)
+                    fmla <- as.formula(paste(v, "~", paste(predictors, collapse = " + ")))
+                    tmp <- missMethods::impute_cart(dat = tmp, formula = fmla, impute_all = FALSE)
+                  }
+                  tmp$cov1 <- factor(tmp$cov1)
+                  tmp
+                }
+              )
+
+              model_imp <- lavaan::lavaan(growthCurveModel, data = imp, do.fit = FALSE)
+              tree_imp <- semtree::semtree(model_imp, data = imp, control = semtree::semtree.control(max.depth = 1, use.maxlm = TRUE))
+              cluster_imp <- semtree::getLeafs(tree_imp, data = imp)
+              ari_val <- pdfCluster::adj.rand.index(cluster_imp, true_groups)
+
+              RESULT_ALL <- rbind(RESULT_ALL, data.frame(
+                rep = tt,
+                N = N,
+                cutpoint_loc = cut_loc,
+                cutpoint = cutpoint,
+                missing_mech = missing_mech,
+                missing_rate = missing_rate,
+                method = method,
+                ARI = ari_val
+              ))
+            }
+          }
+        }
+      }
+    }
+  }
+
+  write_xlsx(RESULT_ALL, path = "simulation_ARI_dichotomous.xlsx")
+  return(RESULT_ALL)
+}
+
+# Run the simulation
+results_all <- SIMULATION(Repeat = 100, seed = 2024)
+
+# Summarize the results
+results_summary <- results_all %>%
+  group_by(N, cutpoint_loc, missing_mech, missing_rate, method) %>%
+  summarise(
+    mean_ARI = mean(ARI, na.rm = TRUE),
+    sd_ARI = sd(ARI, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(N, cutpoint_loc, missing_mech, missing_rate, desc(mean_ARI))
+
+print(results_summary, n = Inf)
