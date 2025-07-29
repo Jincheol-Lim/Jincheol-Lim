@@ -141,9 +141,22 @@ SIMULATION <- function(Repeat = 100, seed = 123) {
     }
   }
 
-  # Save output
-  write.csv(RESULT_ALL, "0716_simulation_ARI_MCAR_MAR.csv", row.names = FALSE)
-  write_xlsx(RESULT_ALL, "0716_simulation_ARI_MCAR_MAR.xlsx")
-
+  write_xlsx(RESULT_ALL, path = "simulation_ARI_continuous.xlsx")
   return(RESULT_ALL)
 }
+
+# Run the simulation
+results_all <- SIMULATION(Repeat = 100, seed = 2024)
+
+# Summarize the results
+results_summary <- results_all %>%
+  group_by(N, cutpoint_loc, missing_mech, missing_rate, method) %>%
+  summarise(
+    mean_ARI = mean(ARI, na.rm = TRUE),
+    sd_ARI = sd(ARI, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(N, cutpoint_loc, missing_mech, missing_rate, desc(mean_ARI))
+
+print(results_summary, n = Inf)
